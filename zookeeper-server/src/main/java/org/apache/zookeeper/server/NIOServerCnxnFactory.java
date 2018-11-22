@@ -20,6 +20,7 @@ package org.apache.zookeeper.server;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.BindException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
@@ -698,7 +699,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
     }
 
     @Override
-    public void reconfigure(InetSocketAddress addr) {
+    public void reconfigure(InetSocketAddress addr) throws BindException {
         ServerSocketChannel oldSS = ss;        
         try {
             acceptThread.setReconfiguring();
@@ -714,11 +715,19 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
             this.ss = ServerSocketChannel.open();
             ss.socket().setReuseAddress(true);
             LOG.info("binding to port " + addr);
-            ss.socket().bind(addr);
+            try {
+                ss.socket().bind(addr);
+            } catch (IOException e) {
+                throw new BindException(e.getMessage());
+            }
             ss.configureBlocking(false);
             acceptThread = new AcceptThread(ss, addr, selectorThreads);
             acceptThread.start();
-        } catch(IOException e) {
+        } catch (BindException e) {
+            LOG.error("Error reconfiguring client port to {} {}", addr, e.getMessage());
+            tryClose(oldSS);
+            throw e;
+        } catch (IOException e) {
             LOG.error("Error reconfiguring client port to {} {}", addr, e.getMessage());
             tryClose(oldSS);
         }

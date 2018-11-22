@@ -19,6 +19,7 @@
 package org.apache.zookeeper.server;
 
 import java.io.IOException;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -79,7 +80,7 @@ public abstract class ServerCnxnFactory {
     public abstract void configure(InetSocketAddress addr, int maxcc, boolean secure)
             throws IOException;
 
-    public abstract void reconfigure(InetSocketAddress addr);
+    public abstract void reconfigure(InetSocketAddress addr) throws BindException;
 
     protected SaslServerCallbackHandler saslServerCallbackHandler;
     public Login login;

@@ -756,59 +756,67 @@ public class Leader {
     /**
      * @return True if committed, otherwise false.
      **/
-    synchronized public boolean tryToCommit(Proposal p, long zxid, SocketAddress followerAddr) {       
-       // make sure that ops are committed in order. With reconfigurations it is now possible
-       // that different operations wait for different sets of acks, and we still want to enforce
-       // that they are committed in order. Currently we only permit one outstanding reconfiguration
-       // such that the reconfiguration and subsequent outstanding ops proposed while the reconfig is
-       // pending all wait for a quorum of old and new config, so it's not possible to get enough acks
-       // for an operation without getting enough acks for preceding ops. But in the future if multiple
-       // concurrent reconfigs are allowed, this can happen.
-       if (outstandingProposals.containsKey(zxid - 1)) return false;
-       
-       // in order to be committed, a proposal must be accepted by a quorum.
-       //
-       // getting a quorum from all necessary configurations.
+    synchronized public boolean tryToCommit(Proposal p, long zxid, SocketAddress followerAddr) throws BindException {
+        BindException bindException = null;
+
+        // make sure that ops are committed in order. With reconfigurations it is now possible
+        // that different operations wait for different sets of acks, and we still want to enforce
+        // that they are committed in order. Currently we only permit one outstanding reconfiguration
+        // such that the reconfiguration and subsequent outstanding ops proposed while the reconfig is
+        // pending all wait for a quorum of old and new config, so it's not possible to get enough acks
+        // for an operation without getting enough acks for preceding ops. But in the future if multiple
+        // concurrent reconfigs are allowed, this can happen.
+        if (outstandingProposals.containsKey(zxid - 1)) return false;
+
+        // in order to be committed, a proposal must be accepted by a quorum.
+        //
+        // getting a quorum from all necessary configurations.
         if (!p.hasAllQuorums()) {
-           return false;                 
+            return false;
         }
-        
+
         // commit proposals in order
-        if (zxid != lastCommitted+1) {    
-           LOG.warn("Commiting zxid 0x" + Long.toHexString(zxid)
-                    + " from " + followerAddr + " not first!");
-            LOG.warn("First is "
-                    + (lastCommitted+1));
-        }     
-        
+        if (zxid != lastCommitted+1) {
+            LOG.warn("Commiting zxid 0x" + Long.toHexString(zxid) + " from " + followerAddr + " not first!");
+            LOG.warn("First is " + (lastCommitted+1));
+        }
+
         outstandingProposals.remove(zxid);
-        
+
         if (p.request != null) {
-             toBeApplied.add(p);
+            toBeApplied.add(p);
         }
 
         if (p.request == null) {
             LOG.warn("Going to commmit null: " + p);
-        } else if (p.request.getHdr().getType() == OpCode.reconfig) {                                   
-            LOG.debug("Committing a reconfiguration! " + outstandingProposals.size()); 
-                 
-            //if this server is voter in new config with the same quorum address, 
+        } else if (p.request.getHdr().getType() == OpCode.reconfig) {
+            LOG.debug("Committing a reconfiguration! " + outstandingProposals.size());
+
+            //if this server is voter in new config with the same quorum address,
             //then it will remain the leader
             //otherwise an up-to-date follower will be designated as leader. This saves
-            //leader election time, unless the designated leader fails                             
+            //leader election time, unless the designated leader fails
             Long designatedLeader = getDesignatedLeader(p, zxid);
             //LOG.warn("designated leader is: " + designatedLeader);
 
             QuorumVerifier newQV = p.qvAcksetPairs.get(p.qvAcksetPairs.size()-1).getQuorumVerifier();
-       
-            self.processReconfig(newQV, designatedLeader, zk.getZxid(), true);
+
+            try {
+                self.processReconfig(newQV, designatedLeader, zk.getZxid(), true);
+            } catch (BindException e) {
+                LOG.warn("processReconfig() failed due to BindException", e);
+                // If we failed to bind the port, we'd better not lead commits even if we're "designated Leader".
+                allowedToCommit = false;
+                // Fall through; we must follow-commit the reconfiguration transaction even when it fails to bind.
+                bindException = e;
+            }
 
             if (designatedLeader != self.getId()) {
                 allowedToCommit = false;
             }
-                   
-            // we're sending the designated leader, and if the leader is changing the followers are 
-            // responsible for closing the connection - this way we are sure that at least a majority of them 
+
+            // we're sending the designated leader, and if the leader is changing the followers are
+            // responsible for closing the connection - this way we are sure that at least a majority of them
             // receive the commit message.
             commitAndActivate(zxid, designatedLeader);
             informAndActivate(p, designatedLeader);
@@ -821,12 +829,15 @@ public class Leader {
         if(pendingSyncs.containsKey(zxid)){
             for(LearnerSyncRequest r: pendingSyncs.remove(zxid)) {
                 sendSync(r);
-            }               
-        } 
-        
-        return  true;   
+            }
+        }
+
+        if (bindException != null) {
+            throw bindException;
+        }
+        return true;
     }
-    
+
     /**
      * Keep a count of acks that are received by the leader for a particular
      * proposal
@@ -835,7 +846,7 @@ public class Leader {
      * @param sid, the id of the server that sent the ack
      * @param followerAddr
      */
-    synchronized public void processAck(long sid, long zxid, SocketAddress followerAddr) {        
+    synchronized public void processAck(long sid, long zxid, SocketAddress followerAddr) throws BindException {
         if (!allowedToCommit) return; // last op committed was a leader change - from now on 
                                      // the new leader should commit        
         if (LOG.isTraceEnabled()) {
@@ -886,6 +897,7 @@ public class Leader {
         }*/
         
         boolean hasCommitted = tryToCommit(p, zxid, followerAddr);
+        // if tryToCommit() throws BindException, we don't attempt the loop below.
 
         // If p is a reconfiguration, multiple other operations may be ready to be committed,
         // since operations wait for different sets of acks.
@@ -1283,7 +1295,7 @@ public class Leader {
     /**
      * Start up Leader ZooKeeper server and initialize zxid to the new epoch
      */
-    private synchronized void startZkServer() {
+    private synchronized void startZkServer() throws BindException {
         // Update lastCommitted and Db's zxid to a value representing the new epoch
         lastCommitted = zk.getZxid();
         LOG.info("Have quorum of supporters, sids: [ "
@@ -1302,7 +1314,13 @@ public class Leader {
         
         Long designatedLeader = getDesignatedLeader(newLeaderProposal, zk.getZxid());                                         
 
-        self.processReconfig(newQV, designatedLeader, zk.getZxid(), true);
+        try {
+            self.processReconfig(newQV, designatedLeader, zk.getZxid(), true);
+        } catch (BindException e) {
+            // If we failed to bind the port, we'd better not commit even if we're "designated Leader".
+            allowedToCommit = false;
+            throw e;
+        }
         if (designatedLeader != self.getId()) {
             allowedToCommit = false;
         }

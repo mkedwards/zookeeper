@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.net.BindException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -1918,7 +1919,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
         writeLongToFile(ACCEPTED_EPOCH_FILENAME, e);
     }
    
-    public boolean processReconfig(QuorumVerifier qv, Long suggestedLeaderId, Long zxid, boolean restartLE) {
+    public boolean processReconfig(QuorumVerifier qv, Long suggestedLeaderId, Long zxid, boolean restartLE) throws BindException {
        if (!QuorumPeerConfig.isReconfigEnabled()) {
            LOG.debug("Reconfig feature is disabled, skip reconfig processing.");
            return false;
@@ -1943,14 +1944,28 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
        if (prevQV.getVersion() < qv.getVersion() && !prevQV.equals(qv)) {
            Map<Long, QuorumServer> newMembers = qv.getAllMembers();
            updateRemotePeerMXBeans(newMembers);
-           if (restartLE) restartLeaderElection(prevQV, qv);
 
            QuorumServer myNewQS = newMembers.get(getId());
            if (myNewQS != null && myNewQS.clientAddr != null
                    && !myNewQS.clientAddr.equals(oldClientAddr)) {
-               cnxnFactory.reconfigure(myNewQS.clientAddr);
+               try {
+                   cnxnFactory.reconfigure(myNewQS.clientAddr);
+               } catch (BindException e) {
+                   // The call to restartLeaderElection() has been moved after the reconfigure,
+                   // so that the new leader election reliably takes place using the new address.
+                   // But if the reconfigure fails, then we need to drop out of any election we're
+                   // already participating in.  Synchronize on "this" while we do that, since
+                   // restartLeaderElection() also synchronizes on "this".
+                   synchronized (this) {
+                       LOG.warn("Shutting down Leader Election");
+                       getElectionAlg().shutdown();
+                   }
+                   throw e;
+               }
                updateThreadName();
            }
+
+           if (restartLE) restartLeaderElection(prevQV, qv);
 
            boolean roleChange = updateLearnerType(qv);
            boolean leaderChange = false;
@@ -1973,7 +1988,6 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
            }
        }
        return false;
-
    }
 
     private void updateRemotePeerMXBeans(Map<Long, QuorumServer> newMembers) {

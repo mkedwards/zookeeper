@@ -28,6 +28,7 @@ import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelException;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelHandler.Sharable;
@@ -54,6 +55,7 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.X509KeyManager;
 import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
+import java.net.BindException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.security.KeyManagementException;
@@ -487,12 +489,24 @@ public class NettyServerCnxnFactory extends ServerCnxnFactory {
         parentChannel = bootstrap.bind(localAddress);
     }
     
-    public void reconfigure(InetSocketAddress addr) {
+    public void reconfigure(InetSocketAddress addr) throws BindException {
        Channel oldChannel = parentChannel;
        try {
            LOG.info("binding to port {}", addr);
-           parentChannel = bootstrap.bind(addr);
+           try {
+               parentChannel = bootstrap.bind(addr);
+           } catch (ChannelException e) {
+               Throwable cause = e.getCause();
+               if (cause instanceof BindException) {
+                   throw new BindException(e.getMessage());
+               } else {
+                   throw e;
+               }
+           }
            localAddress = addr;
+       } catch (BindException e) {
+           LOG.error("Error while reconfiguring", e);
+           throw e;
        } catch (Exception e) {
            LOG.error("Error while reconfiguring", e);
        } finally {

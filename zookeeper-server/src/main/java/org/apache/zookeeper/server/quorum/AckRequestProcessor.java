@@ -18,6 +18,8 @@
 
 package org.apache.zookeeper.server.quorum;
 
+import java.net.BindException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,10 +42,14 @@ class AckRequestProcessor implements RequestProcessor {
     /**
      * Forward the request as an ACK to the leader
      */
-    public void processRequest(Request request) {
+    public void processRequest(Request request) throws RequestProcessorException {
         QuorumPeer self = leader.self;
         if(self != null)
-            leader.processAck(self.getId(), request.zxid, null);
+            try {
+                leader.processAck(self.getId(), request.zxid, null);
+            } catch (BindException e) {
+                throw new RequestProcessorException("processAck() failed with BindException", e);
+            }
         else
             LOG.error("Null QuorumPeer");
     }
