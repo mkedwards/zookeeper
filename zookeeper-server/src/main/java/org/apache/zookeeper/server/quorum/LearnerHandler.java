@@ -25,6 +25,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.net.BindException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
@@ -561,7 +562,13 @@ public class LearnerHandler extends ZooKeeperThread {
                         }
                     }
                     syncLimitCheck.updateAck(qp.getZxid());
-                    leader.processAck(this.sid, qp.getZxid(), sock.getLocalSocketAddress());
+                    try {
+                        leader.processAck(this.sid, qp.getZxid(), sock.getLocalSocketAddress());
+                    } catch (BindException e) {
+                        LOG.error("BindException while processing ACK from Observer  " + this.sid, e);
+                        // Limp along despite the bind failure; it may be repaired by later
+                        // reconfiguration
+                    }
                     break;
                 case Leader.PING:
                     // Process the touches

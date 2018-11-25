@@ -1945,27 +1945,23 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
            Map<Long, QuorumServer> newMembers = qv.getAllMembers();
            updateRemotePeerMXBeans(newMembers);
 
+           // It's a bit counter-intuitive, but what works is to restart the leader election
+           // before processing the requested change (if any) to our own client address.
+           if (restartLE) restartLeaderElection(prevQV, qv);
+
            QuorumServer myNewQS = newMembers.get(getId());
+
+           BindException bindException = null;
+
            if (myNewQS != null && myNewQS.clientAddr != null
                    && !myNewQS.clientAddr.equals(oldClientAddr)) {
                try {
                    cnxnFactory.reconfigure(myNewQS.clientAddr);
                } catch (BindException e) {
-                   // The call to restartLeaderElection() has been moved after the reconfigure,
-                   // so that the new leader election reliably takes place using the new address.
-                   // But if the reconfigure fails, then we need to drop out of any election we're
-                   // already participating in.  Synchronize on "this" while we do that, since
-                   // restartLeaderElection() also synchronizes on "this".
-                   synchronized (this) {
-                       LOG.warn("Shutting down Leader Election");
-                       getElectionAlg().shutdown();
-                   }
-                   throw e;
+                   bindException = e;
                }
                updateThreadName();
            }
-
-           if (restartLE) restartLeaderElection(prevQV, qv);
 
            boolean roleChange = updateLearnerType(qv);
            boolean leaderChange = false;
@@ -1982,7 +1978,11 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
                // election
                reconfigFlagClear();
            }
-           
+
+           if (bindException != null) {
+               throw bindException;
+           }
+
            if (roleChange || leaderChange) {
                return true;
            }

@@ -92,6 +92,14 @@ public class ReconfigTest extends ZKTestCase implements DataCallback{
                     // 30 seconds.
                     Assert.fail("client could not connect to reestablished quorum: giving up after 30+ seconds.");
                 }
+            } catch (KeeperException.SessionExpiredException e) {
+                if (j < 29) {
+                    Thread.sleep(1000);
+                } else {
+                    // test fails if we still can't connect to the quorum after
+                    // 30 seconds.
+                    Assert.fail("client could not connect to reestablished quorum: giving up after 30+ seconds.");
+                }
             }
         }
 
