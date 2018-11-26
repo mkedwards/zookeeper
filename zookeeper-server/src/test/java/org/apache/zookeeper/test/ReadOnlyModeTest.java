@@ -25,11 +25,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-
-import org.apache.log4j.Layout;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.apache.log4j.WriterAppender;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.appender.WriterAppender;
+import org.apache.logging.log4j.core.StringLayout;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NotReadOnlyException;
@@ -255,13 +255,12 @@ public class ReadOnlyModeTest extends ZKTestCase {
     @Test(timeout = 90000)
     public void testSeekForRwServer() throws Exception {
         // setup the logger to capture all logs
-        Layout layout = Logger.getRootLogger().getAppender("CONSOLE")
-                .getLayout();
+        StringLayout layout = (StringLayout) LogManager.getRootLogger().getAppender("CONSOLE").getLayout();
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         WriterAppender appender = new WriterAppender(layout, os);
         appender.setImmediateFlush(true);
         appender.setThreshold(Level.INFO);
-        Logger zlogger = Logger.getLogger("org.apache.zookeeper");
+        Logger zlogger = LogManager.getLogger("org.apache.zookeeper");
         zlogger.addAppender(appender);
 
         try {

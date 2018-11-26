@@ -43,10 +43,11 @@ import java.util.regex.Pattern;
 import javax.security.sasl.SaslException;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.apache.log4j.PatternLayout;
-import org.apache.log4j.WriterAppender;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.layout.PatternLayout;
+import org.apache.logging.log4j.core.appender.WriterAppender;
 import org.apache.zookeeper.AsyncCallback;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -358,7 +359,7 @@ public class QuorumPeerMainTest extends QuorumPeerTestBase {
         // capture QuorumPeer logging
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         WriterAppender appender = getConsoleAppender(os, Level.INFO);
-        Logger qlogger = Logger.getLogger(QuorumPeer.class);
+        Logger qlogger = LogManager.getLogger(QuorumPeer.class);
         qlogger.addAppender(appender);
 
         numServers = 3;
@@ -569,7 +570,7 @@ public class QuorumPeerMainTest extends QuorumPeerTestBase {
         // setup the logger to capture all logs
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         WriterAppender appender = getConsoleAppender(os, Level.WARN);
-        Logger qlogger = Logger.getLogger("org.apache.zookeeper.server.quorum");
+        Logger qlogger = LogManager.getLogger("org.apache.zookeeper.server.quorum");
         qlogger.addAppender(appender);
 
         try {
@@ -625,7 +626,7 @@ public class QuorumPeerMainTest extends QuorumPeerTestBase {
         // setup the logger to capture all logs
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         WriterAppender appender = getConsoleAppender(os, Level.INFO);
-        Logger qlogger = Logger.getLogger("org.apache.zookeeper.server.quorum");
+        Logger qlogger = LogManager.getLogger("org.apache.zookeeper.server.quorum");
         qlogger.addAppender(appender);
 
         // test the most likely situation only: server is stated as observer in
@@ -766,7 +767,7 @@ public class QuorumPeerMainTest extends QuorumPeerTestBase {
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         WriterAppender appender = getConsoleAppender(os, Level.INFO);
         appender.setImmediateFlush(true);
-        Logger zlogger = Logger.getLogger("org.apache.zookeeper");
+        Logger zlogger = LogManager.getLogger("org.apache.zookeeper");
         zlogger.addAppender(appender);
 
         try {
@@ -1051,7 +1052,7 @@ public class QuorumPeerMainTest extends QuorumPeerTestBase {
         // capture QuorumPeer logging
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         WriterAppender appender = getConsoleAppender(os, Level.DEBUG);
-        Logger qlogger = Logger.getLogger("org.apache.zookeeper.server.quorum");
+        Logger qlogger = LogManager.getLogger("org.apache.zookeeper.server.quorum");
         qlogger.addAppender(appender);
 
         try {
@@ -1162,7 +1163,7 @@ public class QuorumPeerMainTest extends QuorumPeerTestBase {
     }
 
     private WriterAppender getConsoleAppender(ByteArrayOutputStream os, Level level) {
-        String loggingPattern = ((PatternLayout) Logger.getRootLogger().getAppender("CONSOLE").getLayout()).getConversionPattern();
+        String loggingPattern = ((PatternLayout) LogManager.getRootLogger().getAppender("CONSOLE").getLayout()).getConversionPattern();
         WriterAppender appender = new WriterAppender(new PatternLayout(loggingPattern), os);
         appender.setThreshold(level);
         return appender;

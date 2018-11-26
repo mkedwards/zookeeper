@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="CONSOLE" target="SYSTEM_OUT">
+            <RFC5424Layout appName="zookeeper"
+                           mdcId="mdc"
+                           facility="LOCAL0"
+                           enterpriseNumber="15749"
+                           newLine="true"
+                           exceptionPattern="%throwable{full}"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Root level="INFO">
+            <AppenderRef ref="CONSOLE"/>
+        </Root>
+    </Loggers>
+</Configuration>
